@@ -13,7 +13,11 @@ export type Config = {
   hostname: string
   sqliteLocation: string
   subscriptionEndpoint: string
+  agentEndpoint: string
+  agentHandle: string
+  agentAppPassword: string
   serviceDid: string
   publisherDid: string
   subscriptionReconnectDelay: number
+  listUpdateDelay: number
 }

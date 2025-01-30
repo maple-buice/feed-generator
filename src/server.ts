@@ -9,30 +9,39 @@ import { createDb, Database, migrateToLatest } from './db'
 import { FirehoseSubscription } from './subscription'
 import { AppContext, Config } from './config'
 import wellKnown from './well-known'
+import { ListManager } from './list'
 
 export class FeedGenerator {
   public app: express.Application
   public server?: http.Server
   public db: Database
+  public listManager: ListManager
   public firehose: FirehoseSubscription
   public cfg: Config
 
   constructor(
     app: express.Application,
     db: Database,
+    listManager: ListManager,
     firehose: FirehoseSubscription,
     cfg: Config,
   ) {
     this.app = app
     this.db = db
+    this.listManager = listManager
     this.firehose = firehose
     this.cfg = cfg
   }
 
-  static create(cfg: Config) {
+  static async create(cfg: Config) {
     const app = express()
     const db = createDb(cfg.sqliteLocation)
-    const firehose = new FirehoseSubscription(db, cfg.subscriptionEndpoint)
+    const listManager = new ListManager(db, cfg.agentEndpoint, cfg)
+    const firehose = new FirehoseSubscription(
+      db,
+      cfg.subscriptionEndpoint,
+      listManager,
+    )
 
     const didCache = new MemoryCache()
     const didResolver = new DidResolver({
@@ -58,11 +67,12 @@ export class FeedGenerator {
     app.use(server.xrpc.router)
     app.use(wellKnown(ctx))
 
-    return new FeedGenerator(app, db, firehose, cfg)
+    return new FeedGenerator(app, db, listManager, firehose, cfg)
   }
 
   async start(): Promise<http.Server> {
     await migrateToLatest(this.db)
+    this.listManager.run(this.cfg.listUpdateDelay)
     this.firehose.run(this.cfg.subscriptionReconnectDelay)
     this.server = this.app.listen(this.cfg.port, this.cfg.listenhost)
     await events.once(this.server, 'listening')
